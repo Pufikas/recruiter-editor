@@ -57,8 +57,8 @@ id_to_name = {r["id"]: r["name"] for r in rows}
 # ---------- header ----------
 st.markdown("""
 <h1 style="margin-bottom:0;">recruiter tree editor</h1>
-<p class="muted">internal tool · live database · multi-user safe</p>
 """, unsafe_allow_html=True)
+
 
 tab_assign, tab_edit, tab_add = st.tabs(
     ["assign recruiters", "edit members", "add member"]
