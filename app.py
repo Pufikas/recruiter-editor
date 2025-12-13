@@ -17,7 +17,7 @@ def load_bg(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-bg = load_bg("assets/bg.jpg")
+bg = load_bg("assets/background.jpg")
 
 st.markdown(
     f"""
