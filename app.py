@@ -3,7 +3,7 @@ import streamlit as st
 import psycopg
 import json
 
-# 🔥 nuke Streamlit-injected PG env vars
+# remove PG env vars (safe)
 for k in list(os.environ.keys()):
     if k.startswith("PG"):
         del os.environ[k]
@@ -11,58 +11,71 @@ for k in list(os.environ.keys()):
 conn = psycopg.connect(
     host=st.secrets["postgres"]["host"],
     dbname=st.secrets["postgres"]["database"],
-    user=st.secrets["postgres"]["user"],  # postgres.<project_ref>
+    user=st.secrets["postgres"]["user"],
     password=st.secrets["postgres"]["password"],
-    port=st.secrets["postgres"]["port"],  # 6543
+    port=st.secrets["postgres"]["port"],
     sslmode="require",
 )
 
+cur = conn.cursor()
 
-cur.execute("SELECT id, name FROM members ORDER BY name")
+st.title("recruiter tree editor")
+
+# --- load data once ---
+cur.execute("SELECT id, name, recruited_by FROM members ORDER BY name")
 rows = cur.fetchall()
 
-id_by_name = {name: mid for mid, name in rows}
-names = [name for _, name in rows]
-names_with_none = ["None (Founder)"] + names
+id_by_name = {name: mid for mid, name, _ in rows}
+name_by_id = {mid: name for mid, name, _ in rows}
 
-st.title("recruiter tree editor (postgres)")
+names = [name for _, name, _ in rows]
+choices = ["None (Founder)"] + names
 
+# --- local state ---
+if "changes" not in st.session_state:
+    st.session_state.changes = {}
 
-for mid, name in rows:
-    cur.execute("SELECT recruited_by FROM members WHERE id = %s", (mid,))
-    current_parent = cur.fetchone()[0]
-
+# --- UI ---
+for mid, name, recruited_by in rows:
     default = "None (Founder)"
-    if current_parent:
-        cur.execute("SELECT name FROM members WHERE id = %s", (current_parent,))
-        default = cur.fetchone()[0]
+    if recruited_by:
+        default = name_by_id[recruited_by]
 
     selected = st.selectbox(
         f"who recruited **{name}**?",
-        names_with_none,
-        index=names_with_none.index(default),
-        key=name
+        choices,
+        index=choices.index(default),
+        key=f"select_{mid}"
     )
 
-    parent_id = None if selected.startswith("None") else id_by_name[selected]
+    if selected != default:
+        st.session_state.changes[mid] = (
+            None if selected.startswith("None") else id_by_name[selected]
+        )
 
-    cur.execute(
-        "UPDATE members SET recruited_by = %s WHERE id = %s",
-        (parent_id, mid)
-    )
+# --- save button ---
+if st.button("save changes"):
+    for mid, parent_id in st.session_state.changes.items():
+        cur.execute(
+            "UPDATE members SET recruited_by = %s WHERE id = %s",
+            (parent_id, mid)
+        )
     conn.commit()
+    st.session_state.changes.clear()
+    st.success("saved!")
 
+# --- export ---
 if st.button("export json"):
     cur.execute("SELECT id, name, recruited_by FROM members")
     data = cur.fetchall()
 
     nodes = {i: {"name": n, "children": []} for i, n, _ in data}
-    root_nodes = []
+    roots = []
 
     for i, n, parent in data:
         if parent:
             nodes[parent]["children"].append(nodes[i])
         else:
-            root_nodes.append(nodes[i])
+            roots.append(nodes[i])
 
-    st.code(json.dumps(root_nodes, indent=4), language="json")
+    st.code(json.dumps(roots, indent=4), language="json")
