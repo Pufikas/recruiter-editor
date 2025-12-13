@@ -1,2 +1,2 @@
 streamlit==1.52.1
-st-supabase-connection==0.2.3
+st-supabase-connection==2.1.3
