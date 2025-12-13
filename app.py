@@ -10,59 +10,51 @@ st.title("recruiter tree editor")
 resp = conn.table("members").select("id,name,recruited_by").order("name").execute()
 rows = resp.data
 
-id_by_name = {r["name"]: r["id"] for r in rows}
-name_by_id = {r["id"]: r["name"] for r in rows}
+# split assigned / unassigned
+unassigned = [r for r in rows if r["recruited_by"] is None]
+assigned_count = len(rows) - len(unassigned)
+total = len(rows)
 
+# progress bar
+st.progress(assigned_count / total)
+st.caption(f"{assigned_count} / {total} recruiters assigned")
+
+if not unassigned:
+    st.success("all members have recruiters assigned 🎉")
+    st.stop()
+
+# build lookup tables
+id_by_name = {r["name"]: r["id"] for r in rows}
 names = [r["name"] for r in rows]
 choices = ["None (Founder)"] + names
 
-if "changes" not in st.session_state:
-    st.session_state.changes = {}
+# current target (always first unassigned)
+current = unassigned[0]
+mid = current["id"]
+name = current["name"]
 
-# ui
-for r in rows:
-    mid = r["id"]
-    name = r["name"]
-    parent = r["recruited_by"]
+st.markdown(f"## who recruited **{name}**?")
 
-    default = "None (Founder)"
-    if parent:
-        default = name_by_id[parent]
+selected = st.selectbox(
+    "start typing a name:",
+    choices,
+    index=0,
+    key="recruiter_select"
+)
 
-    selected = st.selectbox(
-        f"who recruited **{name}**?",
-        choices,
-        index=choices.index(default),
-        key=f"select_{mid}",
-    )
+col1, col2 = st.columns([1, 3])
 
-    if selected != default:
-        st.session_state.changes[mid] = (
-            None if selected.startswith("None") else id_by_name[selected]
-        )
+with col1:
+    if st.button("save & next"):
+        parent_id = None if selected.startswith("None") else id_by_name[selected]
 
-# save button
-if st.button("save changes"):
-    for mid, parent_id in st.session_state.changes.items():
         conn.table("members").update(
             {"recruited_by": parent_id}
         ).eq("id", mid).execute()
 
-    st.session_state.changes.clear()
-    st.success("saved!")
+        # clear selection and move on
+        st.session_state.pop("recruiter_select", None)
+        st.rerun()
 
-# export json
-if st.button("export json"):
-    resp = conn.table("members").select("id,name,recruited_by").execute()
-    data = resp.data
-
-    nodes = {r["id"]: {"name": r["name"], "children": []} for r in data}
-    roots = []
-
-    for r in data:
-        if r["recruited_by"]:
-            nodes[r["recruited_by"]]["children"].append(nodes[r["id"]])
-        else:
-            roots.append(nodes[r["id"]])
-
-    st.code(json.dumps(roots, indent=2), language="json")
+with col2:
+    st.caption("tip: type a few letters to search")
