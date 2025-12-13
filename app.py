@@ -2,19 +2,19 @@ import streamlit as st
 from st_supabase_connection import SupabaseConnection
 
 FOUNDER_NAME = "Naimul"
+ADD_MEMBER_OPTION = "➕ add new member"
 
 st.set_page_config(
     page_title="recruiter editor",
     layout="wide"
 )
 
-# supabase connection
 conn = st.connection("supabase", type=SupabaseConnection)
 
 st.title("recruiter tree editor")
 
 # =========================================================
-# load members (fresh every run)
+# load members
 # =========================================================
 resp = conn.table("members").select(
     "id,name,recruited_by,pfp_url"
@@ -22,7 +22,6 @@ resp = conn.table("members").select(
 
 rows = resp.data
 
-# lookup maps
 id_by_name = {r["name"]: r["id"] for r in rows}
 id_to_name = {r["id"]: r["name"] for r in rows}
 names = [r["name"] for r in rows]
@@ -32,16 +31,15 @@ names = [r["name"] for r in rows]
 # =========================================================
 tab_assign, tab_manage = st.tabs([
     "assign recruiters",
-    "add / edit members"
+    "manage members"
 ])
 
 # =========================================================
-# TAB 1 — ASSIGN RECRUITERS
+# TAB 1 — ASSIGN RECRUITERS (guided flow)
 # =========================================================
 with tab_assign:
     st.subheader("assign recruiters")
 
-    # exclude founder from assignment flow
     assignable = [r for r in rows if r["name"] != FOUNDER_NAME]
     unassigned = [r for r in assignable if r["recruited_by"] is None]
 
@@ -60,20 +58,19 @@ with tab_assign:
 
         st.markdown(f"### who recruited **{name}**?")
 
-        choices = [FOUNDER_NAME] + [
+        recruiter_choices = [FOUNDER_NAME] + [
             r["name"] for r in rows if r["name"] != name
         ]
 
         selected = st.selectbox(
             "start typing a name:",
-            choices,
-            key="recruiter_select"
+            recruiter_choices,
+            key="recruiter_assign"
         )
 
         if st.button("save & next"):
             parent_id = id_by_name[selected]
 
-            # concurrency-safe update
             res = conn.table("members").update(
                 {"recruited_by": parent_id}
             ).eq("id", mid).is_("recruited_by", None).execute()
@@ -81,7 +78,7 @@ with tab_assign:
             if res.count == 0:
                 st.warning("someone else already assigned this member")
             else:
-                st.session_state.pop("recruiter_select", None)
+                st.session_state.pop("recruiter_assign", None)
 
             st.rerun()
 
@@ -95,11 +92,9 @@ with tab_assign:
     for r in rows:
         table_rows.append({
             "name": r["name"],
-            "recruited_by": (
-                id_to_name.get(
-                    r["recruited_by"],
-                    f"{FOUNDER_NAME} (Founder)"
-                )
+            "recruited_by": id_to_name.get(
+                r["recruited_by"],
+                f"{FOUNDER_NAME} (Founder)"
             )
         })
 
@@ -110,12 +105,63 @@ with tab_assign:
     )
 
 # =========================================================
-# TAB 2 — ADD / EDIT MEMBERS
+# TAB 2 — MANAGE MEMBERS
 # =========================================================
 with tab_manage:
+    st.subheader("edit existing member")
+
+    member_choices = names + [ADD_MEMBER_OPTION]
+
+    selected_member = st.selectbox(
+        "select member",
+        member_choices
+    )
+
+    # -------------------------
+    # EDIT MEMBER
+    # -------------------------
+    if selected_member != ADD_MEMBER_OPTION:
+        member_id = id_by_name[selected_member]
+        current_parent = next(
+            r["recruited_by"] for r in rows if r["id"] == member_id
+        )
+
+        recruiter_choices = [FOUNDER_NAME] + [
+            n for n in names if n != selected_member
+        ]
+
+        default_recruiter = (
+            FOUNDER_NAME
+            if current_parent is None
+            else id_to_name[current_parent]
+        )
+
+        recruiter = st.selectbox(
+            "who recruited them?",
+            recruiter_choices,
+            index=recruiter_choices.index(default_recruiter)
+        )
+
+        if st.button("save changes"):
+            parent_id = None if recruiter == FOUNDER_NAME else id_by_name[recruiter]
+
+            conn.table("members").update(
+                {"recruited_by": parent_id}
+            ).eq("id", member_id).execute()
+
+            st.success("member updated")
+            st.rerun()
+
+    else:
+        st.info("select a member above or add a new one below")
+
+    # =====================================================
+    # ADD MEMBER (SEPARATE)
+    # =====================================================
+    st.divider()
     st.subheader("add new member")
 
-    name = st.text_input("member name")
+    new_name = st.text_input("member name")
 
     recruiter_mode = st.radio(
         "recruiter selection",
@@ -130,17 +176,20 @@ with tab_manage:
             "recruited by",
             [FOUNDER_NAME] + names
         )
-        recruiter_id = id_by_name[recruiter]
+        recruiter_id = None if recruiter == FOUNDER_NAME else id_by_name[recruiter]
 
     else:
         new_recruiter_name = st.text_input("new recruiter name")
 
     if st.button("add member"):
-        if not name.strip():
+        if not new_name.strip():
             st.error("name cannot be empty")
             st.stop()
 
-        # create recruiter first if needed
+        if new_name in id_by_name:
+            st.error("member already exists")
+            st.stop()
+
         if recruiter_mode == "recruiter not listed":
             if not new_recruiter_name.strip():
                 st.error("recruiter name cannot be empty")
@@ -154,9 +203,9 @@ with tab_manage:
             recruiter_id = res.data[0]["id"]
 
         conn.table("members").insert({
-            "name": name,
+            "name": new_name,
             "recruited_by": recruiter_id
         }).execute()
 
-        st.success(f"added {name}")
+        st.success(f"added {new_name}")
         st.rerun()
