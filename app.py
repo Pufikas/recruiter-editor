@@ -36,26 +36,7 @@ total = len(assignable)
 st.progress(assigned_count / total if total else 1)
 st.caption(f"{assigned_count} / {total} recruiters assigned")
 
-st.divider()
-st.subheader("full members table (read-only)")
 
-resp = conn.table("members").select(
-    "id,name,recruited_by"
-).order("name").execute()
-
-data = resp.data
-
-# map ids → names
-id_to_name = {r["id"]: r["name"] for r in data}
-
-table = []
-for r in data:
-    table.append({
-        "name": r["name"],
-        "recruited_by": id_to_name.get(r["recruited_by"], "Founder")
-    })
-
-st.dataframe(table, use_container_width=True)
 
 if not unassigned:
     st.success("all members have recruiters assigned 🎉")
@@ -95,3 +76,33 @@ with col1:
 
 with col2:
     st.caption("tip: type a few letters to search")
+
+
+st.divider()
+st.subheader("full members table (read-only)")
+
+resp = conn.table("members").select(
+    "id,name,recruited_by"
+).order("name").execute()
+
+data = resp.data
+
+# map id → name
+id_to_name = {r["id"]: r["name"] for r in data}
+
+table_rows = []
+for r in data:
+    table_rows.append({
+        "name": r["name"],
+        "recruited_by": (
+            id_to_name[r["recruited_by"]]
+            if r["recruited_by"] is not None
+            else "Naimul (Founder)"
+        )
+    })
+
+st.dataframe(
+    table_rows,
+    use_container_width=True,
+    hide_index=True
+)
