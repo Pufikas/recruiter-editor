@@ -83,11 +83,15 @@ if not rows:
 
 id_by_name = {r["name"]: r["id"] for r in rows}
 id_to_name = {r["id"]: r["name"] for r in rows}
+row_by_id = {r["id"]: r for r in rows}
 
 # ===============================
-# session state
+# session state (stable order)
 # ===============================
-if "assign_idx" not in st.session_state:
+if "assign_order" not in st.session_state:
+    st.session_state.assign_order = [
+        r["id"] for r in rows if r["name"] != FOUNDER_NAME
+    ]
     st.session_state.assign_idx = 0
 
 # ===============================
@@ -106,33 +110,31 @@ tab_assign, tab_edit, tab_add = st.tabs(
 # =====================================================
 with tab_assign:
     with panel("assignment"):
-        assignable = [
-            r for r in rows
-            if r["name"] != FOUNDER_NAME
-        ]
+        order = st.session_state.assign_order
+        idx = st.session_state.assign_idx
 
-        unassigned = [
-            r for r in assignable
-            if r["recruited_by"] is None
-        ]
+        # skip already-assigned people
+        while idx < len(order) and row_by_id[order[idx]]["recruited_by"] is not None:
+            idx += 1
 
-        assigned = len(assignable) - len(unassigned)
-        total = len(assignable)
+        st.session_state.assign_idx = idx
 
-        st.progress(assigned / total if total else 1)
-        st.caption(f"{assigned} / {total} assigned")
-
-        if not unassigned:
+        if idx >= len(order):
             st.success("all members assigned")
             st.stop()
 
-        # clamp index
-        if st.session_state.assign_idx >= len(unassigned):
-            st.session_state.assign_idx = 0
-
-        current = unassigned[st.session_state.assign_idx]
-        mid = current["id"]
+        current_id = order[idx]
+        current = row_by_id[current_id]
         name = current["name"]
+
+        assigned = sum(
+            1 for r in rows
+            if r["name"] != FOUNDER_NAME and r["recruited_by"] is not None
+        )
+        total = len(order)
+
+        st.progress(assigned / total if total else 1)
+        st.caption(f"{assigned} / {total} assigned")
 
         st.markdown(f"""
         <h2>
@@ -142,49 +144,31 @@ with tab_assign:
         """, unsafe_allow_html=True)
 
         choices = [FOUNDER_NAME] + [
-            r["name"] for r in rows
-            if r["name"] != name
+            r["name"] for r in rows if r["name"] != name
         ]
 
         selected = st.selectbox(
             "recruiter",
             choices,
             label_visibility="collapsed",
-            key=f"assign_select_{mid}"
+            key=f"assign_select_{current_id}"
         )
 
         if st.button("save & next", use_container_width=True):
-            # founder-safe logic
-            if selected == FOUNDER_NAME:
-                parent_id = None
-            else:
-                parent_id = id_by_name[selected]
+            parent_id = None if selected == FOUNDER_NAME else id_by_name[selected]
 
-            res = (
-                conn.table("members")
-                .update({"recruited_by": parent_id})
-                .eq("id", mid)
-                .is_("recruited_by", None)
-                .execute()
-            )
+            conn.table("members").update(
+                {"recruited_by": parent_id}
+            ).eq("id", current_id).execute()
 
-            if res.count == 0:
-                st.warning("already assigned by someone else")
-            else:
-                st.session_state.assign_idx += 1
-                st.session_state.pop("assign_select", None)
-
+            st.session_state.assign_idx += 1
             st.rerun()
 
     with panel("members (read-only)"):
-        table = []
-        for r in rows:
-            table.append({
-                "name": r["name"],
-                "recruited_by": id_to_name.get(
-                    r["recruited_by"], "founder"
-                )
-            })
+        table = [{
+            "name": r["name"],
+            "recruited_by": id_to_name.get(r["recruited_by"], "founder")
+        } for r in rows]
 
         st.dataframe(
             table,
@@ -203,9 +187,7 @@ with tab_edit:
             [r["name"] for r in rows]
         )
 
-        member = next(
-            r for r in rows if r["name"] == member_name
-        )
+        member = next(r for r in rows if r["name"] == member_name)
 
         new_name = st.text_input(
             "rename",
@@ -213,13 +195,10 @@ with tab_edit:
         )
 
         recruiter_choices = [FOUNDER_NAME] + [
-            r["name"] for r in rows
-            if r["name"] != member["name"]
+            r["name"] for r in rows if r["name"] != member["name"]
         ]
 
-        current_recruiter = (
-            id_to_name.get(member["recruited_by"], FOUNDER_NAME)
-        )
+        current_recruiter = id_to_name.get(member["recruited_by"], FOUNDER_NAME)
 
         new_recruiter = st.selectbox(
             "recruited by",
