@@ -85,6 +85,12 @@ id_by_name = {r["name"]: r["id"] for r in rows}
 id_to_name = {r["id"]: r["name"] for r in rows}
 
 # ===============================
+# session state
+# ===============================
+if "assign_idx" not in st.session_state:
+    st.session_state.assign_idx = 0
+
+# ===============================
 # header
 # ===============================
 st.markdown("""
@@ -118,47 +124,57 @@ with tab_assign:
 
         if not unassigned:
             st.success("all members assigned")
-        else:
-            current = unassigned[0]
-            mid = current["id"]
-            name = current["name"]
+            st.stop()
 
-            st.markdown(f"""
-            <h2>
-                who recruited <span style="color:#7c7cff">{name}</span>?
-            </h2>
-            <p class="muted">start typing to search</p>
-            """, unsafe_allow_html=True)
+        # clamp index
+        if st.session_state.assign_idx >= len(unassigned):
+            st.session_state.assign_idx = 0
 
-            choices = [FOUNDER_NAME] + [
-                r["name"] for r in rows
-                if r["name"] != name
-            ]
+        current = unassigned[st.session_state.assign_idx]
+        mid = current["id"]
+        name = current["name"]
 
-            selected = st.selectbox(
-                "recruiter",
-                choices,
-                label_visibility="collapsed",
-                key="assign_select"
-            )
+        st.markdown(f"""
+        <h2>
+            who recruited <span style="color:#7c7cff">{name}</span>?
+        </h2>
+        <p class="muted">start typing to search</p>
+        """, unsafe_allow_html=True)
 
-            if st.button("save & next", use_container_width=True):
+        choices = [FOUNDER_NAME] + [
+            r["name"] for r in rows
+            if r["name"] != name
+        ]
+
+        selected = st.selectbox(
+            "recruiter",
+            choices,
+            label_visibility="collapsed",
+            key="assign_select"
+        )
+
+        if st.button("save & next", use_container_width=True):
+            # founder-safe logic
+            if selected == FOUNDER_NAME:
+                parent_id = None
+            else:
                 parent_id = id_by_name[selected]
 
-                res = (
-                    conn.table("members")
-                    .update({"recruited_by": parent_id})
-                    .eq("id", mid)
-                    .is_("recruited_by", None)
-                    .execute()
-                )
+            res = (
+                conn.table("members")
+                .update({"recruited_by": parent_id})
+                .eq("id", mid)
+                .is_("recruited_by", None)
+                .execute()
+            )
 
-                if res.count == 0:
-                    st.warning("already assigned by someone else")
-                else:
-                    st.session_state.pop("assign_select", None)
+            if res.count == 0:
+                st.warning("already assigned by someone else")
+            else:
+                st.session_state.assign_idx += 1
+                st.session_state.pop("assign_select", None)
 
-                st.rerun()
+            st.rerun()
 
     with panel("members (read-only)"):
         table = []
@@ -217,7 +233,10 @@ with tab_edit:
             if st.button("save changes", use_container_width=True):
                 conn.table("members").update({
                     "name": new_name.strip(),
-                    "recruited_by": id_by_name[new_recruiter]
+                    "recruited_by": (
+                        None if new_recruiter == FOUNDER_NAME
+                        else id_by_name[new_recruiter]
+                    )
                 }).eq("id", member["id"]).execute()
 
                 st.success("updated")
@@ -251,7 +270,10 @@ with tab_add:
 
             conn.table("members").insert({
                 "name": new_name.strip(),
-                "recruited_by": id_by_name[recruiter]
+                "recruited_by": (
+                    None if recruiter == FOUNDER_NAME
+                    else id_by_name[recruiter]
+                )
             }).execute()
 
             st.success(f"added {new_name}")
