@@ -2,6 +2,7 @@
 import HelloWorld from './components/HelloWorld.vue'
 import TheWelcome from './components/TheWelcome.vue'
 import DisplayList from './components/DisplayList.vue'
+import Tree from './components/Tree.vue';
 </script>
 
 <template>
@@ -13,7 +14,8 @@ import DisplayList from './components/DisplayList.vue'
     </div> -->
   </header>
   
-  <DisplayList />
+  <!-- <DisplayList /> -->
+  <Tree />
   <main>
     <!-- <TheWelcome /> -->
   </main>

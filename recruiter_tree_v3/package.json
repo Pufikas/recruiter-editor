@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.87.1",
+    "d3": "^7.9.0",
     "supabase": "^2.67.1",
     "vue": "^3.5.25"
   },
