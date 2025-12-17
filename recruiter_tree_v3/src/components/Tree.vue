@@ -11,12 +11,12 @@ import { formattedHierarchical } from '@/lib/formatData';
 const props = defineProps({
     width: {
         type: Number,
-        default: 1400
+        default: 1900
     },
 
     height: {
         type: Number,
-        default: 1200
+        default: 1300
     }
 });
 
@@ -37,12 +37,17 @@ const zoom = d3.zoom()
 const drawTree = () => {
     // root = d3.hierarchy(data.value[0]); // returns a single parent's tree (could use for personal tree)
 
-    // needed to keep a single root inside the tree (probably replace with root as naimul?)
+    // no one is parent
     const virutalRoot = {
         name: 'root',
         children: data.value
     }
     root = d3.hierarchy(virutalRoot);
+
+    // tree with founder as a root
+    // const founder = data.value[0];
+    // founder.children = [...(founder.children || []), ...data.value.slice(1)];
+    // root = d3.hierarchy(founder);
 
     // d3.tree().size([props.width, props.height])(root); // this doesnt rly work with a lot of data
     
@@ -64,6 +69,7 @@ const draw = () => {
 
     // links
     root.links()
+        // filter is needed only for virtual root
         .filter(l => l.source.depth > 0)
         .forEach(link => {
             ctx.beginPath()
