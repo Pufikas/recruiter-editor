@@ -1,5 +1,15 @@
 # recruiter_tree_v3
 
+## .env Setup
+
+create **.env** inside root (recruiter_tree_v3)
+
+```js
+VITE_SUPABASE_URL=value
+VITE_SUPABASE_KEY=value
+VITE_SUPABASE_PUBLISHABLE_KEY=value
+```
+
 This template should help get you started developing with Vue 3 in Vite.
 
 ## Recommended IDE Setup
