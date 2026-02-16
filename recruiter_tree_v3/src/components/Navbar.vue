@@ -42,6 +42,7 @@
 </template>
 
 <script setup>
+import "../assets/base.css";
 import { ref, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
 
@@ -62,6 +63,19 @@ watch(() => route.path, () => {
 
 <style scoped>
     .router-link-active, :deep(.nav-link.active) {
-        color: aqua;
+        color: aqua !important;
+    }
+
+    .nav-link {
+      color: white;
+    }
+
+    .navbar {
+      background-color: var(--vt-c-black) !important;
+    }
+
+    .dropdown-item:focus, .dropdown-item:hover {
+      color: var(--bs-dropdown-link-hover-color);
+      background-color: var(--vt-c-white-soft);
     }
 </style>
